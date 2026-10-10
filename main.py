@@ -1,121 +1,225 @@
 import os
-import asyncio
-from datetime import datetime, timedelta, timezone
+import json
+from datetime import datetime, timedelta
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from flask import Flask
 from threading import Thread
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 
-# ====== Keep Alive for Render ======
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-1004426259423"))
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+
+DATA_FILE = "members.json"
+
+def load_data():
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_data(data):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+# Flask keep-alive
 flask_app = Flask(__name__)
-
-@flask_app.route('/')
+@flask_app.route("/")
 def home():
-    return "Coach Sanaa VIP Bot Live 24/7!"
+    return "VIP Monthly Bot is LIVE - 30 Days System"
 
 def run_flask():
-    flask_app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
-
-def keep_alive():
-    t = Thread(target=run_flask)
-    t.daemon = True
-    t.start()
-
-# ====== Config ======
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHANNEL_ID = -1004426259423
-ADMIN_ID = 8520909970
-ZIINA_LINK = "https://pay.ziina.com/Tecaanah/yn5Nj7FcV?source=app"
-PRICE = "50 AED"
-waiting_for_proof = set()
+    flask_app.run(host="0.0.0.0", port=8080)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    kb = [[InlineKeyboardButton(f"ادفع {PRICE} عبر Ziina", url=ZIINA_LINK)], [InlineKeyboardButton("انا دفعت", callback_data="paid")]]
-    await update.message.reply_text("اهلا بك في نادي Coach Sanaa VIP\nالاشتراك 50 AED شهريا\nاضغطي انا دفعت بعد الدفع", reply_markup=InlineKeyboardMarkup(kb))
+    keyboard = [
+        [InlineKeyboardButton("💳 اشترك شهري (30 يوم)", callback_data="subscribe")],
+        [InlineKeyboardButton("📞 تواصل مع الادارة", url="https://t.me/ziina_admin")]
+    ]
+    await update.message.reply_text(
+        "أهلاً بك في Ziina VIP 🔥\n\n"
+        "✨ الاشتراك الشهري:\n"
+        "• المدة: 30 يوم\n"
+        "• دخول فوري بعد الدفع\n"
+        "• تذكير قبل الانتهاء بـ 3 أيام\n"
+        "• طرد تلقائي عند الانتهاء\n\n"
+        "اضغط اشترك للبدء:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"ايديك هو: {update.effective_user.id}")
-
-async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    data = q.data or ""
-    user = q.from_user
-    if data.startswith(("approve_", "reject_")) and user.id!= ADMIN_ID:
-        await q.answer("هذا للادارة فقط", show_alert=True)
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
         return
-    await q.answer("تم")
-    if data == "paid":
-        waiting_for_proof.add(user.id)
-        try:
-            await q.edit_message_caption("بعد الدفع ابعتي سكرين شوت للايصال هنا")
-        except:
-            try:
-                await q.edit_message_text("بعد الدفع ابعتي سكرين شوت للايصال هنا")
-            except:
-                pass
-    elif data.startswith("approve_"):
-        uid = int(data.split("_", 1)[1])
-        try:
-            expire = datetime.now(timezone.utc) + timedelta(hours=24)
-            link = await context.bot.create_chat_invite_link(CHANNEL_ID, member_limit=1, expire_date=expire)
-            invite = link.invite_link
-            await context.bot.send_message(uid, f"تمت الموافقة! رابطك: {invite}")
-            msg = f"🔔🔔🔔 تمت الموافقة بنجاح!\n✅ عطيت رابط لـ {uid}\n🔗 {invite}\n\nهذه الرسالة تبقى بالمحادثة"
-            try:
-                await q.edit_message_caption(msg)
-            except:
-                try:
-                    await q.edit_message_text(msg)
-                except:
-                    pass
-            await context.bot.send_message(chat_id=q.message.chat_id, text=msg, disable_notification=False)
-        except Exception as e:
-            err = f"خطأ: {e}"
-            try:
-                await q.edit_message_caption(err)
-            except:
-                try:
-                    await q.edit_message_text(err)
-                except:
-                    pass
-            await context.bot.send_message(chat_id=q.message.chat_id, text=err)
-    elif data.startswith("reject_"):
-        uid = int(data.split("_", 1)[1])
-        try:
-            await context.bot.send_message(uid, "لم يتم التأكيد")
-            txt = f"تم رفض {uid}"
-            try:
-                await q.edit_message_caption(txt)
-            except:
-                try:
-                    await q.edit_message_text(txt)
-                except:
-                    pass
-            await context.bot.send_message(chat_id=q.message.chat_id, text=txt)
-        except Exception as e:
-            await context.bot.send_message(chat_id=q.message.chat_id, text=f"خطأ رفض: {e}")
+    data = load_data()
+    msg = f"📊 المشتركين الحاليين: {len(data)}\n\n"
+    for uid, info in data.items():
+        expiry = info.get('expiry','?')
+        msg += f"• {uid} -> ينتهي {expiry[:10]}\n"
+    await update.message.reply_text(msg or "لا يوجد مشتركين")
 
-async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = load_data()
+
+    if query.data == "subscribe":
+        await query.message.reply_text(
+            "💳 طريقة الدفع الشهرية:\n\n"
+            "1️⃣ حول المبلغ على الحساب البنكي\n"
+            "2️⃣ ابعت صورة الاثبات هنا (كصورة مو كملف)\n\n"
+            "⏳ بعد التأكيد من الادارة رح توصلك رابط القناة الخاصة فوراً ✅\n"
+            "المدة 30 يوم من لحظة القبول."
+        )
+
+    elif query.data.startswith("approve_"):
+        user_id_str = query.data.split("_")[1]
+        user_id = int(user_id_str)
+        try:
+            # Create one-time invite link
+            invite = await context.bot.create_chat_invite_link(
+                chat_id=CHANNEL_ID,
+                member_limit=1,
+                name=f"VIP_{user_id_str}_{datetime.now().strftime('%d%m')}"
+            )
+            expiry = datetime.now() + timedelta(days=30)
+            
+            # Save
+            data[user_id_str] = {
+                "expiry": expiry.isoformat(),
+                "joined_at": datetime.now().isoformat(),
+                "invite_link": invite.invite_link
+            }
+            save_data(data)
+
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=f"✅ تم تأكيد اشتراكك الشهري! 🎉\n\n"
+                     f"🔗 رابط قناتك الخاصة (صالح لشخص واحد فقط):\n{invite.invite_link}\n\n"
+                     f"📅 الاشتراك ينتهي: {expiry.strftime('%Y-%m-%d')}\n"
+                     f"⏰ رح نذكرك قبل 3 أيام من الانتهاء\n\n"
+                     f"استمتع بالمحتوى 🔥"
+            )
+            await query.edit_message_text(f"✅ تم قبول {user_id_str}\nرابط: {invite.invite_link}\nينتهي: {expiry.date()}")
+            
+        except Exception as e:
+            await query.edit_message_text(f"❌ خطأ: {e}\nتأكد البوت ادمن بالقناة وعندو صلاحية Invite + Ban")
+
+    elif query.data.startswith("reject_"):
+        user_id_str = query.data.split("_")[1]
+        try:
+            await context.bot.send_message(chat_id=int(user_id_str), text="❌ تم رفض اثبات الدفع. تواصل مع الادارة للتأكد من التحويل.")
+        except:
+            pass
+        await query.edit_message_text(f"❌ تم رفض {user_id_str}")
+
+async def proof_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.photo:
+        return
+    
     user = update.effective_user
-    waiting_for_proof.discard(user.id)
-    kb = [[InlineKeyboardButton("موافقة", callback_data=f"approve_{user.id}"), InlineKeyboardButton("رفض", callback_data=f"reject_{user.id}")]]
-    await context.bot.send_photo(ADMIN_ID, photo=update.message.photo[-1].file_id, caption=f"طلب جديد من {user.id} @{user.username}", reply_markup=InlineKeyboardMarkup(kb))
-    await update.message.reply_text("تم الاستلام")
+    
+    # Don't process admin's own photos
+    if user.id == ADMIN_ID:
+        return
+
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ قبول وارسال الرابط", callback_data=f"approve_{user.id}"),
+            InlineKeyboardButton("❌ رفض", callback_data=f"reject_{user.id}")
+        ]
+    ]
+    
+    caption = (
+        f"📩 اثبات دفع جديد (شهري)\n"
+        f"👤 الاسم: {user.first_name}\n"
+        f"🔗 اليوزر: @{user.username or 'بدون'}\n"
+        f"🆔 ID: {user.id}\n"
+        f"⏰ التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    )
+    
+    try:
+        await context.bot.send_photo(
+            chat_id=ADMIN_ID,
+            photo=update.message.photo[-1].file_id,
+            caption=caption,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        await update.message.reply_text("✅ تم ارسال الاثبات للادارة بنجاح!\nانتظر التأكيد خلال دقائق ⏳")
+    except Exception as e:
+        await update.message.reply_text(f"حدث خطأ بالارسال: {e}")
+
+async def check_expiry(context: ContextTypes.DEFAULT_TYPE):
+    data = load_data()
+    now = datetime.now()
+    to_remove = []
+
+    for user_id_str, info in list(data.items()):
+        try:
+            expiry = datetime.fromisoformat(info["expiry"])
+            days_left = (expiry - now).days
+            
+            # Reminder exactly 3 days before
+            if days_left == 3:
+                # Check if we already reminded today (simple flag)
+                if not info.get("reminded_3d"):
+                    try:
+                        await context.bot.send_message(
+                            chat_id=int(user_id_str),
+                            text="⏰ تذكير VIP:\n\nاشتراكك ينتهي بعد 3 أيام!\nجدد الآن لتستمر بدون انقطاع 🔥\nتواصل مع الادارة للتجديد."
+                        )
+                        data[user_id_str]["reminded_3d"] = True
+                        save_data(data)
+                    except:
+                        pass
+            
+            # Expired
+            if now >= expiry:
+                try:
+                    # Ban then unban to kick
+                    await context.bot.ban_chat_member(chat_id=CHANNEL_ID, user_id=int(user_id_str))
+                    await context.bot.unban_chat_member(chat_id=CHANNEL_ID, user_id=int(user_id_str))
+                    print(f"Kicked expired {user_id_str}")
+                except Exception as e:
+                    print(f"Kick failed {user_id_str}: {e}")
+                
+                try:
+                    await context.bot.send_message(
+                        chat_id=int(user_id_str),
+                        text="❌ انتهى اشتراكك الشهري وتمت ازالتك من القناة.\n\nجدد اشتراكك للعودة والاستمتاع بالمحتوى 🔥"
+                    )
+                except:
+                    pass
+                to_remove.append(user_id_str)
+        except Exception as e:
+            print(f"check error {user_id_str}: {e}")
+
+    for uid in to_remove:
+        data.pop(uid, None)
+    if to_remove:
+        save_data(data)
 
 def main():
-    keep_alive()
-    try:
-        asyncio.get_event_loop()
-    except RuntimeError:
-        asyncio.set_event_loop(asyncio.new_event_loop())
+    Thread(target=run_flask, daemon=True).start()
+    
+    if not BOT_TOKEN:
+        print("BOT_TOKEN missing!")
+        return
 
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("myid", myid))
-    application.add_handler(CallbackQueryHandler(on_button))
-    application.add_handler(MessageHandler(filters.PHOTO, on_photo))
-    print("Bot is running FIXED MODE!")
-    application.run_polling()
+    app = Application.builder().token(BOT_TOKEN).build()
+    
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("members", help_cmd))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.PHOTO, proof_handler))
+    
+    # Check every hour
+    app.job_queue.run_repeating(check_expiry, interval=3600, first=20)
+    
+    print(f"Starting monthly bot... CHANNEL={CHANNEL_ID} ADMIN={ADMIN_ID}")
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
