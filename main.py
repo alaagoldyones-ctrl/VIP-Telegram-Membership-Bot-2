@@ -57,13 +57,17 @@ def keep_alive():
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "").strip()
-# اختياري: ايميل او معرف تلغرام للدعم (يتحط بمتغيرات Render)
-SUPPORT_CONTACT = os.environ.get("SUPPORT_CONTACT", "").strip()
+# ايميل الدعم الفني (ممكن تغيره من متغيرات Render)
+SUPPORT_CONTACT = os.environ.get("SUPPORT_CONTACT", "care@tecaanah.net").strip()
 
 CHANNEL_ID = -1004426259423
 ADMIN_ID = 8520909970
-ZIINA_LINK = "https://pay.ziina.com/Tecaanah/yn5Nj7FcV?source=app"
-PRICE = "50 AED"
+# رابط الدفع: ممكن تبدله من متغيرات Render (PAYMENT_LINK) بدون تعديل الكود
+PAYMENT_LINK = os.environ.get(
+    "PAYMENT_LINK", "https://pay.ziina.com/Tecaanah/yn5Nj7FcV?source=app"
+).strip()
+PRICE_AED = 50
+COMPLAINT_DAYS = 7  # مهلة مراسلة الدعم عند وجود مشكلة
 SUBSCRIPTION_DAYS = 30
 CHECK_INTERVAL_SECONDS = 3600  # فحص الانتهاء والتذكير كل ساعة
 
@@ -95,7 +99,7 @@ def fmt_date(dt):
 
 
 def support_line():
-    return f"\n\n📩 للدعم: {SUPPORT_CONTACT}" if SUPPORT_CONTACT else ""
+    return f"\n\n📩 للدعم الفني: {SUPPORT_CONTACT}" if SUPPORT_CONTACT else ""
 
 
 def approval_keyboard(uid):
@@ -185,18 +189,45 @@ async def db_delete_member(uid):
 
 
 # ====== Commands ======
+def welcome_text():
+    return f"""أهلاً بكِ في Coach Sanaa VIP 💎
+
+قناتك الخاصة لتعلّم السباحة وممارسة الأيروبك والأكوا، بشكل تفاعلي وأنتِ في منزلك.
+لياقة، رشاقة، ومتعة التعلّم ✨
+
+✨ ماذا ستحصلين عليه:
+• حصص وكورسات: سباحة، أيروبك، أكوا
+• برامج تدريبية متكاملة
+• نصائح تغذية عامة
+• لايف أسبوعي
+• متابعة يومية وتصحيح أخطاء
+
+💳 الاشتراك: {PRICE_AED} درهم لمدة {SUBSCRIPTION_DAYS} يوماً
+ولا يتجدد تلقائياً، وستصلك رسالة تذكير قبل انتهاء اشتراكك.
+
+كيف تنضمين؟
+1️⃣ اضغطي «ادفعي الآن» وأكملي الدفع ببطاقتك (Visa / Mastercard) أو عبر Apple Pay / Google Pay
+2️⃣ اضغطي «أنا دفعت» وأرسلي الإيصال أو لقطة شاشة تأكيد الدفع
+3️⃣ بعد تأكيد الدفع يصلك رابط القناة الخاصة (صالح 24 ساعة ولمرة واحدة)
+
+📅 لمعرفة حالة اشتراكك: /status
+
+📋 شروط الاشتراك
+• مدة الاشتراك {SUBSCRIPTION_DAYS} يوماً من تاريخ التفعيل، وينتهي الوصول للقناة تلقائياً بنهايتها.
+• بعد تفعيل الاشتراك وإرسال رابط الدخول، لا يُسترد المبلغ عن الفترة المنقضية أو عند تغيّر الرغبة.
+• إذا تعذّر عليكِ الدخول، أو واجهتِ مشكلة فنية، أو اختلفت الخدمة جوهرياً عن المعلن، راسلينا خلال {COMPLAINT_DAYS} أيام وسنعالج الأمر بإعادة تفعيل الوصول أو تعويض المدة أو الاسترداد بحسب الحالة.
+• يُنصح باستشارة الطبيب قبل البدء بأي برنامج رياضي.
+
+📩 للدعم الفني: {SUPPORT_CONTACT}"""
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = [
-        [InlineKeyboardButton(f"ادفع {PRICE} عبر Ziina", url=ZIINA_LINK)],
-        [InlineKeyboardButton("انا دفعت", callback_data="paid")],
+        [InlineKeyboardButton("ادفعي الآن 💳", url=PAYMENT_LINK)],
+        [InlineKeyboardButton("أنا دفعت", callback_data="paid")],
     ]
     await update.message.reply_text(
-        "اهلا بك في نادي Coach Sanaa VIP\n"
-        "الاشتراك 50 AED شهريا\n"
-        "اضغطي انا دفعت بعد الدفع\n\n"
-        "✨ المدة 30 يوم + طرد تلقائي عند الانتهاء\n"
-        "للاطلاع على حالة اشتراكك: /status" + support_line(),
-        reply_markup=InlineKeyboardMarkup(kb),
+        welcome_text(), reply_markup=InlineKeyboardMarkup(kb)
     )
 
 
@@ -243,7 +274,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "paid":
         waiting_for_proof.add(user.id)
         await context.bot.send_message(
-            user.id, "بعد الدفع ابعتي سكرين شوت (صورة) او ملف PDF للايصال هنا"
+            user.id, "ابعتي الإيصال أو لقطة شاشة تأكيد الدفع هنا (صورة أو PDF)"
         )
 
     elif data.startswith("approve_"):
@@ -262,8 +293,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 uid,
-                "لم يتم تأكيد الدفع. اذا كنت قد دفعت، اضغطي /start ثم انا دفعت "
-                "وابعتي الايصال مرة اخرى." + support_line(),
+                "لم نتمكن من تأكيد الدفع. إذا كنتِ قد دفعتِ، اضغطي /start ثم «أنا دفعت» "
+                "وأرسلي الإيصال مرة أخرى." + support_line(),
             )
         except Exception as e:
             log.warning("reject notify failed: %s", e)
@@ -339,8 +370,8 @@ async def handle_approve(uid, q, context):
     date_str = fmt_date(new_expiry)
     if invite:
         user_text = (
-            "تمت الموافقة! ✅\n"
-            f"🔗 رابط الدخول (صالح 24 ساعة ويعمل مرة وحدة):\n{invite}\n"
+            "تم تأكيد دفعك وتفعيل اشتراكك 🎉\n"
+            f"🔗 رابط القناة الخاصة (صالح 24 ساعة ويعمل مرة واحدة):\n{invite}\n"
             f"📅 اشتراكك ينتهي: {date_str}"
         )
     else:
@@ -365,7 +396,7 @@ async def on_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user.id not in waiting_for_proof:
         await msg.reply_text(
-            "اضغطي /start ثم زر انا دفعت، وبعدها ابعتي الايصال." + support_line()
+            "اضغطي /start ثم زر «أنا دفعت»، وبعدها ابعتي الإيصال أو لقطة الشاشة." + support_line()
         )
         return
 
@@ -396,7 +427,7 @@ async def on_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     waiting_for_proof.discard(user.id)
-    await msg.reply_text("تم الاستلام، رح نراجع الدفع ونأكد اشتراكك قريبا.")
+    await msg.reply_text("تم استلام الإيصال ✅ بعد التأكد من الدفع يصلك رابط القناة.")
 
 
 # ====== فحص الانتهاء والتذكير ======
@@ -427,8 +458,8 @@ async def expire_member(context, uid):
     try:
         await context.bot.send_message(
             uid,
-            "❌ انتهى اشتراكك الشهري وتمت ازالتك من القناة.\n"
-            "لتجديد الاشتراك ادفعي مرة اخرى عبر /start" + support_line(),
+            "انتهى اشتراكك الشهري وتم إيقاف وصولك للقناة.\n"
+            "يسعدنا انضمامك مجدداً، لتجديد الاشتراك اضغطي /start" + support_line(),
         )
     except Exception:
         pass
@@ -445,22 +476,22 @@ async def maybe_remind(context, member, expiry, now):
         already = member.get("reminded_1")
         flags = {"reminded_7": True, "reminded_3": True, "reminded_1": True}
         text = (
-            f"⚠️ آخر يوم: اشتراكك ينتهي خلال 24 ساعة ({date_str}) وبعدها تتم "
-            "ازالتك من القناة.\nللتجديد اضغطي /start وادفعي."
+            f"⚠️ آخر يوم: اشتراكك ينتهي خلال 24 ساعة ({date_str}) وبعدها يتوقف "
+            "وصولك للقناة.\nللتجديد اضغطي /start."
         )
     elif remaining <= timedelta(days=3):
         already = member.get("reminded_3")
         flags = {"reminded_7": True, "reminded_3": True}
         text = (
             f"⏰ تذكير: اشتراكك ينتهي بتاريخ {date_str} (بعد {days_left} ايام تقريبا).\n"
-            "للتجديد اضغطي /start وادفعي."
+            "للتجديد اضغطي /start."
         )
     elif remaining <= timedelta(days=7):
         already = member.get("reminded_7")
         flags = {"reminded_7": True}
         text = (
             f"⏰ تذكير: اشتراكك ينتهي بتاريخ {date_str} (بعد {days_left} ايام تقريبا).\n"
-            "للتجديد اضغطي /start وادفعي."
+            "للتجديد اضغطي /start."
         )
     else:
         return
